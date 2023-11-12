@@ -2,12 +2,9 @@
 #include <vector>
 #include <string>
 #include <ctime>
-#include <algorithm> // Include the algorithm header
+#include <algorithm>
 #include <queue>
 
-// Rest of the code remains unchanged
-
-// Define a User class
 class User {
 public:
     User(const std::string& username, const std::string& password, const std::string& userType)
@@ -31,11 +28,10 @@ private:
     std::string userType;
 };
 
-// Define a FoodItem class
 class FoodItem {
 public:
     FoodItem(const std::string& name, int quantity, int daysToExpiration, const User& owner)
-        : name(name), quantity(quantity), daysToExpiration(daysToExpiration), owner(owner), next(nullptr) {}
+        : name(name), quantity(quantity), daysToExpiration(daysToExpiration), owner(owner) {}
 
     std::string getName() const {
         return name;
@@ -53,23 +49,13 @@ public:
         return owner;
     }
 
-    FoodItem* getNext() const {
-        return next;
-    }
-
-    void setNext(FoodItem* nextItem) {
-        next = nextItem;
-    }
-
 private:
     std::string name;
     int quantity;
     int daysToExpiration;
     User owner;
-    FoodItem* next;
 };
 
-// Define a Notification class
 class Notification {
 public:
     Notification(const std::string& message, const User& recipient)
@@ -88,16 +74,32 @@ private:
     User recipient;
 };
 
-// Define a FoodApp class
+class Restaurant : public User {
+public:
+    Restaurant(const std::string& username, const std::string& password)
+        : User(username, password, "restaurant") {}
+
+    void addFoodItem(const std::string& name, int quantity, int daysToExpiration, std::vector<FoodItem>& foodItems, std::queue<Notification>& notifications) const {
+        foodItems.emplace_back(name, quantity, daysToExpiration, *this);
+
+        // Check for expiration and send notifications
+        time_t currentTime = time(nullptr);
+        time_t expirationTime = currentTime + daysToExpiration * 24 * 60 * 60;
+
+        if (expirationTime <= currentTime) {
+            notifications.push(Notification("Your " + name + " is expired!", *this));
+        }
+    }
+};
+
 class FoodApp {
 public:
-    FoodApp() : foodItems(nullptr) {}
-
     void run() {
         bool loggedIn = false;
-        User currentUser("", "", "");
+        User currentUser("", "", ""); // Initialize with empty user
         std::queue<Notification> notifications;
         std::vector<User> users;
+        std::vector<FoodItem> foodItems;
 
         while (true) {
             if (!loggedIn) {
@@ -132,14 +134,14 @@ public:
                         break;
                     case 2:
                         if (currentUser.getUserType() == "people") {
-                            viewFoodItems(currentUser);
+                            viewFoodItems(foodItems, currentUser);
                         } else {
                             std::cout << "Only people can view food items." << std::endl;
                         }
                         break;
                     case 3:
                         if (currentUser.getUserType() == "people") {
-                            viewExpiringItems(currentUser);
+                            viewExpiringItems(foodItems, currentUser);
                         } else {
                             std::cout << "Only people can view expiring items." << std::endl;
                         }
@@ -153,7 +155,7 @@ public:
                         break;
                     case 5:
                         loggedIn = false;
-                        currentUser = User("", "", "");
+                        currentUser = User("", "", ""); // Clear user data
                         break;
                     default:
                         std::cout << "Invalid choice. Try again." << std::endl;
@@ -175,7 +177,7 @@ private:
         });
 
         if (it != users.end()) {
-            currentUser = *it;
+            currentUser = *it; // Set the current user
             std::cout << "Login successful. Welcome, " << username << "!" << std::endl;
             return true;
         } else {
@@ -210,7 +212,7 @@ private:
         }
     }
 
-    void addFoodItem(const User& currentUser, FoodItem*& foodItems, std::queue<Notification>& notifications) {
+    void addFoodItem(const User& currentUser, std::vector<FoodItem>& foodItems, std::queue<Notification>& notifications) {
         std::string name;
         int quantity, daysToExpiration;
         std::cout << "Enter food item name: ";
@@ -221,47 +223,34 @@ private:
         std::cin >> daysToExpiration;
 
         if (currentUser.getUserType() == "restaurant") {
-            FoodItem* newItem = new FoodItem(name, quantity, daysToExpiration, currentUser);
-            newItem->setNext(foodItems);
-            foodItems = newItem;
-
-            // Check for expiration and send notifications
-            time_t currentTime = time(nullptr);
-            time_t expirationTime = currentTime + daysToExpiration * 24 * 60 * 60;
-
-            if (expirationTime <= currentTime) {
-                notifications.push(Notification("Your " + name + " is expired!", currentUser));
-            }
+            const Restaurant* restaurant = static_cast<const Restaurant*>(&currentUser);
+            restaurant->addFoodItem(name, quantity, daysToExpiration, foodItems, notifications);
             std::cout << "Food item added successfully." << std::endl;
         } else {
             std::cout << "Error: Only restaurants can add food items." << std::endl;
         }
     }
 
-    void viewFoodItems(const User& currentUser) {
+    void viewFoodItems(const std::vector<FoodItem>& foodItems, const User& currentUser) {
         std::cout << "Food Items:" << std::endl;
-        FoodItem* current = foodItems;
-        while (current != nullptr) {
-            if (current->getOwner().getUsername() == currentUser.getUsername()) {
-                std::cout << "Name: " << current->getName() << ", Quantity: " << current->getQuantity() << ", Expiration in " << current->getDaysToExpiration() << " days" << std::endl;
+        for (const FoodItem& item : foodItems) {
+            if (item.getOwner().getUsername() == currentUser.getUsername()) {
+                std::cout << "Name: " << item.getName() << ", Quantity: " << item.getQuantity() << ", Expiration in " << item.getDaysToExpiration() << " days" << std::endl;
             }
-            current = current->getNext();
         }
     }
 
-    void viewExpiringItems(const User& currentUser) {
+    void viewExpiringItems(const std::vector<FoodItem>& foodItems, const User& currentUser) {
         std::cout << "Expiring Food Items:" << std::endl;
         time_t currentTime = time(nullptr);
-        FoodItem* current = foodItems;
 
-        while (current != nullptr) {
-            if (current->getOwner().getUsername() == currentUser.getUsername()) {
-                time_t expirationTime = currentTime + current->getDaysToExpiration() * 24 * 60 * 60;
+        for (const FoodItem& item : foodItems) {
+            if (item.getOwner().getUsername() == currentUser.getUsername()) {
+                time_t expirationTime = currentTime + item.getDaysToExpiration() * 24 * 60 * 60;
                 if (expirationTime <= currentTime) {
-                    std::cout << "Name: " << current->getName() << ", Quantity: " << current->getQuantity() << ", Expiration in " << current->getDaysToExpiration() << " days" << std::endl;
+                    std::cout << "Name: " << item.getName() << ", Quantity: " << item.getQuantity() << ", Expiration in " << item.getDaysToExpiration() << " days" << std::endl;
                 }
             }
-            current = current->getNext();
         }
     }
 
@@ -273,9 +262,6 @@ private:
             notifications.pop();
         }
     }
-
-private:
-    FoodItem* foodItems; // Linked list of food items
 };
 
 int main() {
